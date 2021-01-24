@@ -9,26 +9,28 @@ def main():
     analysis_tool = PhyloAnalyser("taxid_to_analyse.txt", "test_dir")
     taxon_dictionary = analysis_tool.read_taxid_input()
 
-    """
-    for taxid in taxon_dictionary.keys():
-        analysis_tool.download_proteome(taxid)
-
-    # Concatenate renamed .fasta files into one for clustering
-    analysis_tool.concat_files(extension="fasta", path_to_files="test_dir/seq/organisms/renamed",
-                               out_path="test_dir/seq/organisms/concatenated/concat_renamed")
-
-    Performing clustering of concatenated .fasta file
-    analysis_tool.perform_mmseq_clustering(concatenated_fasta_path="test_dir/seq/organisms/concatenated/concat_renamed.fasta")
-
+    # for taxid in taxon_dictionary.keys():
+    #     analysis_tool.download_proteome(taxid)
+    #
+    # # Concatenate renamed .fasta files into one for clustering
+    # analysis_tool.concat_files(extension="fasta", path_to_files="seq/organisms/renamed",
+    #                            out_path="seq/organisms/concatenated/concat_renamed")
+    #
+    # # Performing clustering of concatenated .fasta file
+    # print("Started clustering.")
+    # analysis_tool.perform_mmseq_clustering(
+    #     path_to_concat_fasta="seq/organisms/concatenated/concat_renamed.fasta")
+    # print("Finished clustering.")
+    #
     analysis_tool.split_clusters()
 
     path_to_all_dir = f"{analysis_tool.analysis_loc}/cluster/all"
     clusters_paths_in_all = [cluster_path for cluster_path in
                              glob.glob(f"{path_to_all_dir}/cluster*")]
 
-    # print("Starting folding clusters")
+    print("Starting folding clusters")
     joblib.Parallel(n_jobs=7)(
-        joblib.delayed(analysis_tool.fold_cluster)(cluster_path) for cluster_path in
+        joblib.delayed(analysis_tool.fold_rmdup_cluster)(cluster_path) for cluster_path in
         clusters_paths_in_all)
     print(f"Clusters saved in in /cluster/all directory.")
 
@@ -36,6 +38,9 @@ def main():
     # actually, we could use list_of_clusters_paths, since we are taking it as input in below
     # parallel job, saved it as new variable because using list_of_clusters_paths could be misleading
 
+    path_to_all_dir = f"{analysis_tool.analysis_loc}/cluster/all"
+    clusters_paths_in_all = [cluster_path for cluster_path in
+                             glob.glob(f"{path_to_all_dir}/cluster*")]
     # Removing paralogs
     print("Starting removing paralogs from clusters.")
     joblib.Parallel(n_jobs=7)(
@@ -45,9 +50,13 @@ def main():
 
     list_of_filtered_clusters_paths = [cluster_path for cluster_path in
                                        glob.glob(f"{path_to_filtered_dir}/cluster*")]
-    """
+
     path_to_all_alignments_dir = f"{analysis_tool.analysis_loc}/alignment/all"
-    """
+
+    path_to_all_dir = f"{analysis_tool.analysis_loc}/cluster/all"
+    clusters_paths_in_all = [cluster_path for cluster_path in
+                             glob.glob(f"{path_to_all_dir}/cluster*")]
+
     # Aligning all sequences
     print("Starting aligning clusters from all.")
     joblib.Parallel(n_jobs=7)(
@@ -57,17 +66,17 @@ def main():
 
     clusters_paths_in_filtered = [cluster_path for cluster_path in
                                   glob.glob(f"{path_to_filtered_dir}/cluster*")]
-    """
+
     path_to_filtered_alignments_dir = f"{analysis_tool.analysis_loc}/alignment/filtered"
-    """
+
     # Aligning filtered sequences
     print("Starting aligning clusters from filtered.")
     joblib.Parallel(n_jobs=7)(
-        joblib.delayed(analysis_tool.make_alignment)(cluster_path, path_to_filtered_alignments_dir) for
+        joblib.delayed(analysis_tool.make_alignment)(cluster_path, path_to_filtered_alignments_dir)
+        for
         cluster_path in list_of_filtered_clusters_paths)
     print(f"Clusters without paralogs saved in {path_to_filtered_alignments_dir}")
-    
-    """
+
     path_to_all_alignments_dir_updated = f"{analysis_tool.analysis_loc}/alignment/all"
     list_of_all_alignments_paths = [alignment_path for alignment_path in
                                     glob.glob(f"{path_to_all_alignments_dir_updated}/cluster*")]
@@ -92,8 +101,8 @@ def main():
         aligned_file_path in list_of_filtered_alignments_paths)
     print(f"Trees saved in trees/all directory")
 
-
     # To do: napsiac funkcje, ktora usuwa te same sekwencje z all sekwencji i od nowa zapuscic calosc
+
 
 if __name__ == '__main__':
     main()

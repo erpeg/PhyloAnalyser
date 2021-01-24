@@ -10,7 +10,6 @@ import re
 import glob
 from Bio.Align.Applications import MuscleCommandline
 
-
 import subprocess
 
 
@@ -36,6 +35,8 @@ class PhyloAnalyser:
         if not os.path.exists(f"{self.analysis_loc}/downloads"):
             os.makedirs(f"{self.analysis_loc}/downloads")
         # Creating "tree" directories
+        if not os.path.exists(f"{self.analysis_loc}/tree/ft/cleaned"):
+            os.makedirs(f"{self.analysis_loc}/tree/ft/cleaned")
         if not os.path.exists(f"{self.analysis_loc}/tree/ft/all"):
             os.makedirs(f"{self.analysis_loc}/tree/ft/all")
         if not os.path.exists(f"{self.analysis_loc}/tree/ft/filtered"):
@@ -54,9 +55,13 @@ class PhyloAnalyser:
         # Creating "cluster" directories:
         if not os.path.exists(f"{self.analysis_loc}/cluster/all"):  # used for supertree
             os.makedirs(f"{self.analysis_loc}/cluster/all")
+        if not os.path.exists(f"{self.analysis_loc}/cluster/cleaned"):  # used for supertree
+            os.makedirs(f"{self.analysis_loc}/cluster/cleaned")
         if not os.path.exists(f"{self.analysis_loc}/cluster/filtered"):  # after filtering
             os.makedirs(f"{self.analysis_loc}/cluster/filtered")
         # Creating "alignment" directories
+        if not os.path.exists(f"{self.analysis_loc}/alignment/cleaned"):  # used for supertree
+            os.makedirs(f"{self.analysis_loc}/alignment/cleaned")
         if not os.path.exists(f"{self.analysis_loc}/alignment/all"):  # used for supertree
             os.makedirs(f"{self.analysis_loc}/alignment/all")
         if not os.path.exists(f"{self.analysis_loc}/alignment/filtered"):  # after filtering
@@ -115,18 +120,20 @@ class PhyloAnalyser:
         print("Renaming completed. \nFile saved in seq/organisms/renamed/")
 
     def concat_files(self, extension, path_to_files, out_path):
+        infile_paths = f"{self.analysis_loc}/{path_to_files}"
         outfile_path = f"{self.analysis_loc}/{out_path}.{extension}"
-        process = ['for f in ', path_to_files, '/*.', extension, '; do cat $f >> ', outfile_path, "; done"]
+        process = ['for f in ', infile_paths, '/*', '; do cat $f >> ', outfile_path, "; done"]
         # subprocess.run(process, shell=True, check=True)
         os.system("".join(process))
 
     def perform_mmseq_clustering(self, path_to_concat_fasta):
-        process = ["mmseqs easy-cluster ", path_to_concat_fasta, " clusterRes tmp --min-seq-id 0.5 -c 0.8 --cov-mode 0"]
+        process = ["mmseqs easy-cluster ", self.analysis_loc, "/", path_to_concat_fasta,
+                   " clusterRes tmp --min-seq-id 0.5 -c 0.8 --cov-mode 1"]
         #  mmseqs easy-cluster proper.fasta clusterRes tmp --min-seq-id 0.5 -c 0.8 --cov-mode 0
         # subprocess.run(process, shell=True, check=True)
         os.system("".join(process))
 
-    def split_clusters(self, min_size_cluster: int = 3, max_size_cluster: int = 60):
+    def split_clusters(self):
         """
         Method applies small filter - min and max number of proteins in cluster, discards clasters,
         that consist only of one species.
@@ -144,18 +151,40 @@ class PhyloAnalyser:
             cluster_counter = 0
             for cluster in clusters:
                 temp_cluster = f">{cluster}"
-                if min_size_cluster < cluster.count(">") < max_size_cluster:
-                    if len(set(re.findall(">[A-Z]{6}", temp_cluster))) > 1:
-                        with open(f"{self.analysis_loc}/cluster/all/cluster_{str(cluster_counter).zfill(5)}", "w") as file_to_write:
-                            file_to_write.write(temp_cluster)
-                        cluster_counter += 1
+                if len(set(re.findall(">[A-Z]{6}", temp_cluster))) > 1:
+                    with open(
+                            f"{self.analysis_loc}/cluster/all/cluster_{str(cluster_counter).zfill(5)}",
+                            "w") as file_to_write:
+                        file_to_write.write(temp_cluster)
+                    cluster_counter += 1
 
-    def fold_cluster(self, path_to_cluster):
+    def fold_rmdup_cluster(self, path_to_cluster, min_size_cluster: int = 1,
+                           max_size_cluster: int = 100):
         if path_to_cluster.split(".")[-1] != "fasta":
-            process = f"seqkit seq -w 60 {path_to_cluster} > {path_to_cluster}.fasta"
-            os.system(process)
+            process_one = f"seqkit seq -w 60 {path_to_cluster} > {path_to_cluster}_folded"
+            os.system(process_one)
             os.system(f"rm {path_to_cluster}")
+            process_two = f"seqkit rmdup --quiet -s < {path_to_cluster}_folded > {path_to_cluster}_nodup.fasta"
+            os.system(process_two)
+            os.system(f"rm {path_to_cluster}_folded")
+            with open(f"{path_to_cluster}_nodup.fasta", "r") as to_read, open(
+                    f"{path_to_cluster}.fasta", "w") as to_write:
+                temp_cluster = to_read.read()
+                if min_size_cluster < temp_cluster.count(">") < max_size_cluster:
+                    to_write.write(temp_cluster)
+            os.system(f"rm {path_to_cluster}_nodup.fasta")
 
+    def remove_same_seqs(self, path_to_cluster):
+        name_of_cluster = path_to_cluster.split("/")[-1]
+        with open(path_to_cluster) as to_correct, open(
+                f"{self.analysis_loc}/cluster/cleaned/{name_of_cluster}", "w") as corrected:
+            list_of_sequences = []
+            list_of_taxons = []
+            for record in SeqIO.parse(to_correct, "fasta"):
+                if record.id not in list_of_taxons:
+                    list_of_sequences.append(record)
+                    list_of_taxons.append(record.id)
+                SeqIO.write(list_of_sequences, corrected, 'fasta')
 
     def remove_paralogs(self, path_to_cluster, out_dir_path):
         list_of_sequences = []
@@ -171,7 +200,8 @@ class PhyloAnalyser:
     def make_alignment(self, path_to_cluster, out_dir_path):
         # Align sequences using MAFFT
         cluster_name = path_to_cluster.split("/")[-1]
-        align = MuscleCommandline(input=path_to_cluster, out=f"{out_dir_path}/{cluster_name}", quiet=True)
+        align = MuscleCommandline(input=path_to_cluster, out=f"{out_dir_path}/{cluster_name}",
+                                  quiet=True)
         subprocess.run(str(align).split())
 
     def infer_ft_tree(self, path_to_aligned_file, out_dir_path):
@@ -180,7 +210,3 @@ class PhyloAnalyser:
         cluster_number = cluster_name_without_extension.split("_")[-1]
         os.system(
             f"FastTree -quiet {path_to_aligned_file} > {out_dir_path}/ft_tree_{cluster_number}.nwk")
-
-
-
-
