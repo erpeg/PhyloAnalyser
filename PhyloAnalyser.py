@@ -9,6 +9,7 @@ import ete3
 import re
 import glob
 from Bio.Align.Applications import MuscleCommandline
+import statistics
 
 import subprocess
 
@@ -25,6 +26,48 @@ class PhyloAnalyser:
 
         # Setting up necessary directories
         self.analysis_loc = analysis_dir_path
+        self.path_ft_all_inferred = f"{self.analysis_loc}/tree/ft/all/inferred"
+        self.path_ft_all_bootstrapped = f"{self.analysis_loc}/tree/ft/all/bootstrapped"
+
+        self.path_ft_all_boot_done_consensus = f"{self.analysis_loc}/tree/ft/all/boot_done/consensus"
+        self.path_ft_all_boot_nondone_consensus = f"{self.analysis_loc}/tree/ft/all/boot_nondone/consensus"
+        self.path_ft_all_boot_done_supertree = f"{self.analysis_loc}/tree/ft/all/boot_done/supertree"
+        self.path_ft_all_boot_nondone_supertree = f"{self.analysis_loc}/tree/ft/all/boot_nondone/supertree"
+
+        self.path_ft_filtered_inferred = f"{self.analysis_loc}/tree/ft/filtered/inferred"
+        self.path_ft_filtered_bootstrapped = f"{self.analysis_loc}/tree/ft/filtered/bootstrapped"
+
+        self.path_ft_filtered_boot_done_consensus = f"{self.analysis_loc}/tree/ft/filtered/boot_done/consensus"
+        self.path_ft_filtered_boot_nondone_consensus = f"{self.analysis_loc}/tree/ft/filtered/boot_nondone/consensus"
+        self.path_ft_filtered_boot_done_supertree = f"{self.analysis_loc}/tree/ft/filtered/boot_done/supertree"
+        self.path_ft_filtered_boot_nondone_supertree = f"{self.analysis_loc}/tree/ft/filtered/boot_nondone/supertree"
+
+        self.path_ft_tree_concat = f"{self.analysis_loc}/tree/concatenated"
+
+        self.list_of_consensus_dirs = [self.path_ft_all_boot_done_consensus,
+                                       self.path_ft_all_boot_nondone_consensus,
+                                       self.path_ft_filtered_boot_done_consensus,
+                                       self.path_ft_filtered_boot_nondone_consensus]
+
+        self.list_of_supertree_dirs = [self.path_ft_all_boot_done_supertree,
+                                       self.path_ft_all_boot_nondone_supertree,
+                                       self.path_ft_filtered_boot_done_supertree,
+                                       self.path_ft_filtered_boot_nondone_supertree]
+
+        self.list_of_tree_dirs = [self.path_ft_all_inferred,
+                                  self.path_ft_all_bootstrapped,
+                                  self.path_ft_all_boot_done_consensus,
+                                  self.path_ft_all_boot_nondone_consensus,
+                                  self.path_ft_all_boot_done_supertree,
+                                  self.path_ft_all_boot_nondone_supertree,
+                                  self.path_ft_filtered_inferred,
+                                  self.path_ft_filtered_bootstrapped,
+                                  self.path_ft_filtered_boot_done_consensus,
+                                  self.path_ft_filtered_boot_nondone_consensus,
+                                  self.path_ft_filtered_boot_done_supertree,
+                                  self.path_ft_filtered_boot_nondone_supertree,
+                                  self.path_ft_tree_concat]
+
         self.setup_dirs()  # needs to be run after self.analysis_loc
 
     def setup_dirs(self) -> None:
@@ -43,6 +86,9 @@ class PhyloAnalyser:
             os.makedirs(f"{self.analysis_loc}/tree/ft/filtered")
         if not os.path.exists(f"{self.analysis_loc}/tree/concatenated"):
             os.makedirs(f"{self.analysis_loc}/tree/concatenated")
+        for dir_path in self.list_of_tree_dirs:
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path)
         # Creating "seq" directories
         if not os.path.exists(f"{self.analysis_loc}/seq/organisms/stock_ids"):
             os.makedirs(f"{self.analysis_loc}/seq/organisms/stock_ids")
@@ -126,6 +172,11 @@ class PhyloAnalyser:
         # subprocess.run(process, shell=True, check=True)
         os.system("".join(process))
 
+    def concat_trees(self, path_to_files, out_path):
+        process = ['for f in ', path_to_files, '/*', '; do (cat "${f}"; echo) >> ', out_path, "; done"]
+        # subprocess.run(process, shell=True, check=True)
+        os.system("".join(process))
+
     def perform_mmseq_clustering(self, path_to_concat_fasta):
         process = ["mmseqs easy-cluster ", self.analysis_loc, "/", path_to_concat_fasta,
                    " clusterRes tmp --min-seq-id 0.5 -c 0.8 --cov-mode 1"]
@@ -195,7 +246,8 @@ class PhyloAnalyser:
             if taxon_acronym not in list_of_taxons:
                 list_of_sequences.append(record)
                 list_of_taxons.append(taxon_acronym)
-        SeqIO.write(list_of_sequences, f"{out_dir_path}/{cluster_name}", "fasta")
+        if len(list_of_taxons) == len(self.taxid_dict):
+            SeqIO.write(list_of_sequences, f"{out_dir_path}/{cluster_name}", "fasta")
 
     def make_alignment(self, path_to_cluster, out_dir_path):
         # Align sequences using MAFFT
@@ -210,3 +262,36 @@ class PhyloAnalyser:
         cluster_number = cluster_name_without_extension.split("_")[-1]
         os.system(
             f"FastTree -quiet {path_to_aligned_file} > {out_dir_path}/ft_tree_{cluster_number}.nwk")
+
+    def filter_bootstrapped(self, path_to_tree: str, out_dir: str, threshold: float = 0.8):
+        with open(path_to_tree) as tree_file:
+            filename = path_to_tree.split("/")[-1]
+            t = ete3.Tree(tree_file.read())
+            support_list = []
+            for node in t.traverse():
+                support_list.append(node.support)
+            if statistics.mean(support_list) > threshold:
+                t.write(outfile=f"{out_dir}/{filename}")
+
+    def reformat_nwk(self, path_to_tree: str, out_dir: str, nwk_format: int = 0):
+        """
+
+        :param path_to_tree:
+        :param out_dir:
+        :param nwk_format: for supertree use 9, for consensus use 0
+        :return:
+        """
+        with open(path_to_tree) as tree_file:
+            filename = path_to_tree.split("/")[-1]
+            t = ete3.Tree(tree_file.read())
+            for node in t.traverse():
+                node.name = node.name[:6]
+            t.resolve_polytomy(recursive=True)
+            try:
+                t.unroot()
+            except:
+                pass
+            t.write(format=nwk_format, outfile=f"{out_dir}/{filename}")
+
+    def rm_semicolons_from_nwk(self, path_to_file):
+        os.system(f'sed -i "s/;//" {path_to_file}')
