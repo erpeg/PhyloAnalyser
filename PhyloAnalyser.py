@@ -261,23 +261,7 @@ class PhyloAnalyser:
                     to_write.write(temp_cluster)
             os.system(f"rm {path_to_cluster}_nodup.fasta")
 
-    # def remove_same_seqs(self, path_to_cluster):
-    #     """
-    #     Method used for removing same seuqneces in cluster files
-    #
-    #     :param path_to_cluster: Path to single cluster file
-    #     :return:
-    #     """
-    #     name_of_cluster = path_to_cluster.split("/")[-1]
-    #     with open(path_to_cluster) as to_correct, open(
-    #             f"{self.analysis_loc}/cluster/cleaned/{name_of_cluster}", "w") as corrected:
-    #         list_of_sequences = []
-    #         list_of_taxons = []
-    #         for record in SeqIO.parse(to_correct, "fasta"):
-    #             if record.id not in list_of_taxons:
-    #                 list_of_sequences.append(record)
-    #                 list_of_taxons.append(record.id)
-    #             SeqIO.write(list_of_sequences, corrected, 'fasta')
+
 
     def remove_paralogs(self, path_to_cluster: str, out_dir_path: str):
         """
