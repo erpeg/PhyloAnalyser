@@ -6,24 +6,32 @@ import os
 import argparse
 import glob
 import joblib
+import time
 
 
 def main(input_file, output_dir):
+    start_time = time.time()
     analysis_tool = PhyloAnalyser(input_file, output_dir)
     taxon_dictionary = analysis_tool.read_taxid_input()
 
     for taxid in taxon_dictionary.keys():
         analysis_tool.download_proteome(taxid)
+    print(f"Time used to downlaod sequences is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
 
     # Concatenate renamed .fasta files into one for clustering
     analysis_tool.concat_files(extension="fasta", path_to_files="seq/organisms/renamed",
                                out_path="seq/organisms/concatenated/concat_renamed")
 
+    print(f"Time used to concatenate sequences is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
     # Performing clustering of concatenated .fasta file
     print("Started clustering.")
     analysis_tool.perform_mmseq_clustering(
         path_to_concat_fasta="seq/organisms/concatenated/concat_renamed.fasta")
     print("Finished clustering.")
+    print(f"Time used to perform clustering is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
 
     analysis_tool.split_clusters()
 
@@ -36,6 +44,9 @@ def main(input_file, output_dir):
         joblib.delayed(analysis_tool.fold_rmdup_cluster)(cluster_path) for cluster_path in
         clusters_paths_in_all)
     print(f"Clusters saved in in /cluster/all directory.")
+
+    print(f"Time used to clean fasta clusters is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
 
     path_to_filtered_dir = f"{analysis_tool.analysis_loc}/cluster/filtered"
     # actually, we could use list_of_clusters_paths, since we are taking it as input in below
@@ -50,6 +61,9 @@ def main(input_file, output_dir):
         joblib.delayed(analysis_tool.remove_paralogs)(cluster_path, path_to_filtered_dir) for
         cluster_path in clusters_paths_in_all)
     print(f"Clusters without paralogs saved in {path_to_filtered_dir}")
+
+    print(f"Time used to remove paralogs from clusters is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
 
     list_of_filtered_clusters_paths = [cluster_path for cluster_path in
                                        glob.glob(f"{path_to_filtered_dir}/cluster*")]
@@ -80,6 +94,9 @@ def main(input_file, output_dir):
         cluster_path in list_of_filtered_clusters_paths)
     print(f"Clusters without paralogs saved in {path_to_filtered_alignments_dir}")
 
+    print(f"Time used to align clusters is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
+
     path_to_all_alignments_dir_updated = f"{analysis_tool.analysis_loc}/alignment/all"
     list_of_all_alignments_paths = [alignment_path for alignment_path in
                                     glob.glob(f"{path_to_all_alignments_dir_updated}/cluster*")]
@@ -106,6 +123,9 @@ def main(input_file, output_dir):
         aligned_file_path in list_of_filtered_alignments_paths)
     print(f"Trees saved in trees/all directory")
 
+    print(f"Time used to infer trees is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
+
     # Remove too low bootstrap all trees
     list_of_all_inferred = [alignment_path for alignment_path in
                             glob.glob(f"{analysis_tool.path_ft_all_inferred}/ft_tree*")]
@@ -131,6 +151,9 @@ def main(input_file, output_dir):
         tree_path in list_of_filtered_inferred)
     print(f"Done")
 
+    print(f"Time used to remove low bootstrap values is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
+
     # perform rename for consensus trees
     list_of_filtered_bootstrapped_con = [alignment_path for alignment_path in
                                          glob.glob(
@@ -144,6 +167,9 @@ def main(input_file, output_dir):
         for
         tree_path in list_of_filtered_bootstrapped_con)
     print(f"Reformatting done.")
+
+    print(f"Time used to reformat bootstrap files is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
 
     # perform rename for consensus trees
     list_of_filtered_nonbootstrapped_con = [alignment_path for alignment_path in
@@ -215,10 +241,12 @@ def main(input_file, output_dir):
         tree_path in list_of_filtered_nonbootstrapped_sup)
     print(f"Reformatting done.")
 
+
+
     for dir_path in analysis_tool.list_of_consensus_dirs:
         temp_out_filename = dir_path.split("/")[-3:]
         temp_out_filename = "_".join(temp_out_filename) + ".txt"
-        temp_out_filename = f"{analysis_tool.path_ft_tree_concat}/{temp_out_filename}"
+        temp_out_filename = f"{analysis_tool.path_tree_concat}/{temp_out_filename}"
         print(f"Starting concatenating trees for {temp_out_filename}")
         analysis_tool.concat_trees(dir_path, temp_out_filename)
         print(f"Finished concatenating trees {temp_out_filename}")
@@ -226,11 +254,14 @@ def main(input_file, output_dir):
     for dir_path in analysis_tool.list_of_supertree_dirs:
         temp_out_filename = dir_path.split("/")[-3:]
         temp_out_filename = "_".join(temp_out_filename) + ".txt"
-        temp_out_filename = f"{analysis_tool.path_ft_tree_concat}/{temp_out_filename}"
+        temp_out_filename = f"{analysis_tool.path_tree_concat}/{temp_out_filename}"
         print(f"Starting concatenating trees for {temp_out_filename}")
         analysis_tool.concat_trees(dir_path, temp_out_filename)
         analysis_tool.rm_semicolons_from_nwk(temp_out_filename)
         print(f"Finished concatenating trees {temp_out_filename}")
+
+    print(f"Time used to reformat trees for consensu and supertree calculations is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
 
     paths_to_concat_consensus_trees = [trees_path for trees_path in
                                        glob.glob(
@@ -242,8 +273,14 @@ def main(input_file, output_dir):
     for tree_path in paths_to_concat_consensus_trees:
         analysis_tool.perform_consensus_calc(tree_path, analysis_tool.path_tree_calculated, 0.3)
 
+    print(f"Time used to calculate consensus trees is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
+
     for tree_path in paths_to_concat_supertree_trees:
         analysis_tool.perform_supertree_calc(tree_path, analysis_tool.path_tree_calculated)
+
+    print(f"Time used to calculate supetrees is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
 
     # Perform calcualtions of RF for trees:
     analysis_tool.calculate_rf_all_trees(analysis_tool.path_tree_calculated, "known_topology.nwk")
@@ -255,6 +292,9 @@ def main(input_file, output_dir):
     # Draw ascii trees
     analysis_tool.draw_trees_to_ascii(analysis_tool.path_tree_calculated,
                                       analysis_tool.path_tree_figures)
+
+    print(f"Time used to generate statistics is equal to: {time.time() - start_time} seconds.")
+    start_time = time.time()
 
     os.system(f"mv all_trees* {analysis_tool.analysis_loc}/")
     os.system(f"mv clusterRes* {analysis_tool.analysis_loc}/")
@@ -268,8 +308,7 @@ if __name__ == '__main__':
                         help="Pass, input filename, default is 'taxid_to_analyse.txt'",
                         default="taxid_to_analyse.txt")
     parser.add_argument("-o", "--output_dir", type=str,
-                        help="Pass name of output directory, where most of analysis data will be stored",
-                        default="example_dir")
+                        help="Pass name of output directory, where most of analysis data will be stored")
 
     args = parser.parse_args()
 
