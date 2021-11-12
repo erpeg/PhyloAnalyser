@@ -2,7 +2,7 @@
 PhyloAnalyser by erpeg
 ### Tool to perform phylogenetic analysis of chosen organisms.
 #### Description
-Main objective of this tool was to create software which binds many fast computing softwares into one, enabling fast analysis.
+Main objective of this tool was to create software, that incorporates multiple fast computing softwares into one, enabling fast analysis.
 
 PhyloAnalyser workflow consists of a few steps:
 1. Retrieve data from Uniprot based on taxon identifiers
